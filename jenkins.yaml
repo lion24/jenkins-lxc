@@ -1,0 +1,450 @@
+image:
+  name: jenkins-2.277.1-lts-master-x86_64
+  distribution: ubuntu
+  release: focal
+  variant: cloud
+  description: |-
+    Jenkins 2.277.1 LTS - {{ image.release }}
+  architecture: x86_64
+
+source:
+  downloader: debootstrap
+  same_as: gutsy
+  url: http://archive.ubuntu.com/ubuntu
+  keyserver: keyserver.ubuntu.com
+  keys:
+  - 0x790BC7277767219C42C86F933B4FE6ACC0B21F32
+  - 0xf6ecb3762474eda9d21b7022871920d1991bc93c
+
+targets:
+  lxc:
+    create-message: |-
+      You just created an {{ image.description }} container.
+
+      To enable SSH, run: apt install openssh-server
+      No default root or user password are set by LXC.
+    config:
+    - type: all
+      before: 5
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/ubuntu.common.conf
+
+    - type: user
+      before: 5
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/ubuntu.userns.conf
+
+    - type: all
+      after: 4
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/common.conf
+
+        # For Ubuntu 14.04
+        lxc.mount.entry = /sys/kernel/debug sys/kernel/debug none bind,optional 0 0
+        lxc.mount.entry = /sys/kernel/security sys/kernel/security none bind,optional 0 0
+        lxc.mount.entry = /sys/fs/pstore sys/fs/pstore none bind,optional 0 0
+        lxc.mount.entry = mqueue dev/mqueue mqueue rw,relatime,create=dir,optional 0 0
+
+    - type: user
+      after: 4
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/userns.conf
+
+        # For Ubuntu 14.04
+        lxc.mount.entry = /sys/firmware/efi/efivars sys/firmware/efi/efivars none bind,optional 0 0
+        lxc.mount.entry = /proc/sys/fs/binfmt_misc proc/sys/fs/binfmt_misc none bind,optional 0 0
+
+    - type: all
+      content: |-
+        lxc.arch = {{ image.architecture_personality }}
+
+files:
+- path: /etc/hostname
+  generator: hostname
+
+- path: /etc/hosts
+  generator: hosts
+
+- path: /etc/resolvconf/resolv.conf.d/original
+  generator: remove
+
+- path: /etc/resolvconf/resolv.conf.d/tail
+  generator: remove
+
+- path: /etc/machine-id
+  generator: dump
+
+- path: /etc/user/profile
+  generator: copy
+  source: /etc/profile
+
+- path: /var/lib/dbus/machine-id
+  generator: remove
+
+- path: /etc/netplan/10-lxc.yaml
+  generator: dump
+  content: |-
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          dhcp4: true
+          dhcp-identifier: mac
+  releases:
+  - bionic
+  - eoan
+  - focal
+  - groovy
+  types:
+  - container
+  variants:
+  - default
+
+- path: /etc/network/interfaces
+  generator: dump
+  content: |-
+    # This file describes the network interfaces available on your system
+    # and how to activate them. For more information, see interfaces(5).
+
+    # The loopback network interface
+    auto lo
+    iface lo inet loopback
+
+    auto eth0
+    iface eth0 inet dhcp
+
+    source /etc/network/interfaces.d/*.cfg
+  releases:
+  - trusty
+  - xenial
+  types:
+  - container
+
+- path: /etc/netplan/10-lxc.yaml
+  generator: dump
+  content: |-
+    network:
+      version: 2
+      ethernets:
+        enp5s0:
+          dhcp4: true
+          dhcp-identifier: mac
+  releases:
+  - bionic
+  - eoan
+  - focal
+  - groovy
+  types:
+  - vm
+  variants:
+  - default
+
+- path: /etc/network/interfaces
+  generator: dump
+  content: |-
+    # This file describes the network interfaces available on your system
+    # and how to activate them. For more information, see interfaces(5).
+
+    # The loopback network interface
+    auto lo
+    iface lo inet loopback
+
+    auto enp5s0
+    iface enp5s0 inet dhcp
+
+    source /etc/network/interfaces.d/*.cfg
+  releases:
+  - trusty
+  - xenial
+  types:
+  - vm
+
+- path: /etc/init/lxc-tty.conf
+  generator: upstart-tty
+  releases:
+  - trusty
+  types:
+  - container
+
+- name: meta-data
+  generator: cloud-init
+  variants:
+  - cloud
+
+- name: network-config
+  generator: cloud-init
+  variants:
+  - cloud
+
+- name: user-data
+  generator: cloud-init
+  variants:
+  - cloud
+
+- name: vendor-data
+  generator: cloud-init
+  variants:
+  - cloud
+
+- name: ext4
+  generator: fstab
+  types:
+  - vm
+
+- name: lxd-agent
+  generator: lxd-agent
+  types:
+  - vm
+
+- path: /etc/default/grub.d/50-lxd.cfg
+  generator: dump
+  content: |-
+    GRUB_RECORDFAIL_TIMEOUT=0
+    GRUB_TIMEOUT=0
+    GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} console=tty1 console=ttyS0"
+    GRUB_TERMINAL=console
+  types:
+  - vm
+
+- path: /etc/sudoers.d/90-lxd
+  generator: dump
+  mode: 0440
+  content: |-
+    # User rules for ubuntu
+    ubuntu ALL=(ALL) NOPASSWD:ALL
+  variants:
+  - default
+
+packages:
+  manager: apt
+  update: true
+  cleanup: true
+  sets:
+  - packages:
+    - apt-transport-https
+    - fuse
+    - language-pack-en
+    - openssh-client
+    - vim
+    action: install
+
+  - packages:
+    - cloud-init
+    action: install
+    variants:
+    - cloud
+
+  - packages:
+    - acpid
+    action: install
+    architectures:
+    - amd64
+    - arm64
+    types:
+    - vm
+
+  - packages:
+    - grub-efi-amd64-signed
+    - shim-signed
+    action: install
+    architectures:
+    - amd64
+    types:
+    - vm
+
+  - packages:
+    - grub-efi-arm64-signed
+    action: install
+    architectures:
+    - arm64
+    types:
+    - vm
+
+  - packages:
+    - shim-signed
+    action: install
+    architectures:
+    - arm64
+    releases:
+    - disco
+    - eoan
+    - focal
+    - groovy
+    types:
+    - vm
+
+  - packages:
+    - linux-virtual-hwe-16.04
+    action: install
+    releases:
+    - xenial
+    types:
+    - vm
+
+  - packages:
+    - linux-virtual
+    action: install
+    releases:
+    - bionic
+    - eoan
+    - focal
+    - groovy
+    types:
+    - vm
+
+  - packages:
+    - jenkins
+    action: install
+    releases:
+    - bionic
+    - eoan
+    - focal
+    - groovy
+
+  - packages:
+    - os-prober
+    action: remove
+    types:
+    - vm
+
+  repositories:
+  - name: sources.list
+    url: |-
+      deb http://archive.ubuntu.com/ubuntu {{ image.release }} main restricted universe multiverse
+      deb http://archive.ubuntu.com/ubuntu {{ image.release }}-updates main restricted universe multiverse
+      deb http://security.ubuntu.com/ubuntu {{ image.release }}-security main restricted universe multiverse
+    architectures:
+    - amd64
+    - i386
+
+  - name: sources.list
+    url: |-
+      deb http://ports.ubuntu.com/ubuntu-ports {{ image.release }} main restricted universe multiverse
+      deb http://ports.ubuntu.com/ubuntu-ports {{ image.release }}-updates main restricted universe multiverse
+      deb http://ports.ubuntu.com/ubuntu-ports {{ image.release }}-security main restricted universe multiverse
+    architectures:
+    - armhf
+    - arm64
+    - powerpc
+    - powerpc64
+    - ppc64el
+
+  - name: jenkins.list
+    key: |-
+      -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+      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
+      Z77i4FhdLio04srxWsN+FkRwkBJdkJ8VKEE=
+      =0xpA
+      -----END PGP PUBLIC KEY BLOCK-----
+    url: |-
+      deb https://pkg.jenkins.io/debian-stable binary/
+    architectures:
+    - amd64
+    - i386
+
+actions:
+- trigger: post-update
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Create the ubuntu user account
+    getent group sudo >/dev/null 2>&1 || groupadd --system sudo
+    useradd --create-home -s /bin/bash -G sudo -U ubuntu
+  variants:
+  - default
+
+- trigger: post-packages
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Enable systemd-networkd
+    systemctl enable systemd-networkd
+  releases:
+  - bionic
+  - eoan
+  - focal
+  - groovy
+
+- trigger: post-packages
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Make sure the locale is built and functional
+    locale-gen en_US.UTF-8
+    update-locale LANG=en_US.UTF-8
+
+    # Cleanup underlying /run
+    mount -o bind / /mnt
+    rm -rf /mnt/run/*
+    umount /mnt
+
+    # Cleanup temporary shadow paths
+    rm /etc/*-
+
+- trigger: post-files
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    TARGET="x86_64"
+    [ "$(uname -m)" = "aarch64" ] && TARGET="arm64"
+
+    update-grub
+    grub-install --uefi-secure-boot --target="${TARGET}-efi" --no-nvram --removable
+    update-grub
+    sed -i "s#root=[^ ]*#root=/dev/sda2#g" /boot/grub/grub.cfg
+  types:
+  - vm
+
+mappings:
+  architecture_map: debian

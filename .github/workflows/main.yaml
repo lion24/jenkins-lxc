@@ -1,0 +1,34 @@
+on: [push]
+
+jobs:
+  create_lxc_job:
+    runs-on: ubuntu-latest
+    name: Create Jenkins LXC container
+    env:
+      GOBIN: /usr/local/bin
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      #- uses: actions/setup-go@v2
+      #  with:
+      #    go-version: '^1.16.2' # The Go version to download (if necessary) and use.
+      #- name: create symlink
+      #  run: sudo ln -f -s $GOROOT/bin/* /usr/bin/
+    - name: Install distrobuilder dependencies
+      run: sudo apt -y --no-install-recommends install ca-certificates golang-go debootstrap rsync gpg squashfs-tools git
+    - name: Install dependencies
+      run: |
+        go version
+        go env
+        go mod init github.com/lxc/distrobuilder/distrobuilder
+        go get -d -v github.com/lxc/distrobuilder/distrobuilder
+        sudo -E go install github.com/lxc/distrobuilder/distrobuilder
+    - name: Build LXC containerx
+      run: |
+        mkdir -p ${{ github.workspace }}/artifact
+        sudo /usr/local/bin/distrobuilder build-lxc jenkins.yaml ${{ github.workspace }}/artifact
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: containers
+        path: ${{ github.workspace }}/artifact/**/*
